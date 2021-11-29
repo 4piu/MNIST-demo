@@ -9,9 +9,9 @@ verify_ssl = true
 name = "torch"
 
 [packages]
-torch = { version = "==1.10.0+cu113", index = "torch" }
-torchvision = { version = "==0.11.1+cu113", index = "torch" }
-torchaudio = { version = "==0.10.0+cu113", index = "torch" }
+torch = { version = "==1.10.0", index = "torch" }
+torchvision = { version = "==0.11.1", index = "torch" }
+torchaudio = { version = "==0.10.0", index = "torch" }
 jupyterlab = "*"
 
 [dev-packages]
