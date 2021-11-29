@@ -1,5 +1,3 @@
-# https://github.com/pytorch/examples/blob/master/mnist/main.py
-
 from __future__ import print_function
 
 import argparse
@@ -16,7 +14,7 @@ from livelossplot import PlotLosses
 import matplotlib.pyplot as plt
 
 
-def train(args, model, device, train_loader, optimizer, epoch, logs):
+def train(args, model, device, train_loader, func_loss, optimizer, epoch, logs):
     model.train()
     # for livelossplot
     training_loss = 0.0
@@ -25,7 +23,7 @@ def train(args, model, device, train_loader, optimizer, epoch, logs):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = F.nll_loss(output, target)
+        loss = func_loss(output, target)
         loss.backward()
         optimizer.step()
         # for livelossplot
@@ -42,7 +40,7 @@ def train(args, model, device, train_loader, optimizer, epoch, logs):
     logs['accuracy'] = epoch_acc.item()
 
 
-def test(model, device, test_loader, logs):
+def test(model, device, test_loader, func_loss, logs):
     model.eval()
     test_loss = 0.0
     test_corrects = 0
@@ -50,7 +48,7 @@ def test(model, device, test_loader, logs):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            loss = F.nll_loss(output, target)
+            loss = func_loss(output, target)
             test_loss += loss.detach() * data.size(0)
             _, preds = torch.max(output, 1)
             test_corrects += torch.sum(preds == target.data)
@@ -62,7 +60,7 @@ def test(model, device, test_loader, logs):
     print(f'\nTest set: Average loss: {epoch_loss:.4f}, Accuracy: {test_corrects}/{len(test_loader.dataset)} ({100. * epoch_acc:.4f}%)\n')
 
 
-def show_wrong_prediction(model, device, test_loader, row=4, col=4, fig_size=None):
+def show_prediction(model, device, test_loader, func_loss, positive, row=4, col=4, fig_size=None):
     model.eval()
     test_loss = 0
     correct = 0
@@ -71,24 +69,22 @@ def show_wrong_prediction(model, device, test_loader, row=4, col=4, fig_size=Non
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+            test_loss += func_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
             # Store wrongly predicted images
-            wrong_idx = (pred != target.view_as(pred)).nonzero()[:, 0]
-            wrong_samples = data[wrong_idx]
-            wrong_preds = pred[wrong_idx]
-            actual_preds = target.view_as(pred)[wrong_idx]
+            idx = (pred == target.view_as(pred)).nonzero()[:, 0] if positive \
+                else (pred != target.view_as(pred)).nonzero()[:, 0]
+            samples = data[idx]
+            preds = pred[idx]
+            truths = target.view_as(pred)[idx]
 
-            for i in range(len(wrong_idx)):
-                sample = wrong_samples[i]
-                wrong_pred = wrong_preds[i]
-                actual_pred = actual_preds[i]
+            for i in range(len(idx)):
                 results.append((
-                    sample,
-                    wrong_pred.item(),
-                    actual_pred.item()))
+                    samples[i],
+                    preds[i].item(),
+                    truths[i].item()))
 
         try:
             result_rnd = random.sample(results, row * col)
@@ -101,11 +97,15 @@ def show_wrong_prediction(model, device, test_loader, row=4, col=4, fig_size=Non
                 if len(result_rnd) > 0:
                     result = result_rnd.pop()
                     axarr[r, c].imshow(result[0].cpu().numpy().squeeze(), cmap="gray_r")
-                    axarr[r, c].set_title(f'{result[1]}({result[2]})')
+                    axarr[r, c].set_title(f'{result[1]}' if positive else f'{result[1]} ({result[2]})')
                     axarr[r, c].axis('off')
         plt.tight_layout()
         plt.show()
-        print(f'\nTest set prediction: {correct}/{len(test_loader.dataset)} ({100.0 * correct / len(test_loader.dataset):.0f}%)\n')
+
+        if positive:
+            print(f'\nCorrect prediction: {correct}/{len(test_loader.dataset)} ({100.0 * correct / len(test_loader.dataset):.2f}%)\n')
+        else:
+            print(f'\nWrong prediction: {len(test_loader.dataset) - correct}/{len(test_loader.dataset)} ({100.0 - 100.0 * correct / len(test_loader.dataset):.2f}%)\n')
 
 def main():
     # Training settings
@@ -161,6 +161,7 @@ def main():
 
     NetClass = globals().get(args.net) or getattr(importlib.import_module(args.net), args.net)
     model = NetClass().to(device)
+    func_loss = F.nll_loss
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
@@ -169,8 +170,8 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         logs = {}
-        train(args, model, device, train_loader, optimizer, epoch, logs)
-        test(model, device, test_loader, logs)
+        train(args, model, device, train_loader, func_loss, optimizer, epoch, logs)
+        test(model, device, test_loader, func_loss, logs)
         scheduler.step()
         liveloss.update(logs)
         liveloss.send()
@@ -178,7 +179,8 @@ def main():
     if args.save_model:
         torch.save(model.state_dict(), "mnist_cnn.pt")
 
-    show_wrong_prediction(model, device, test_loader, 8, 8, (8, 8))
+    show_prediction(model, device, test_loader, func_loss, True, 8, 8, (8, 8))
+    show_prediction(model, device, test_loader, func_loss, False, 8, 8, (8, 8))
 
 
 if __name__ == '__main__':
