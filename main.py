@@ -11,9 +11,14 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from torchvision import datasets, transforms
 
+from livelossplot import PlotLosses
 
-def train(args, model, device, train_loader, optimizer, epoch):
+
+def train(args, model, device, train_loader, optimizer, epoch, logs):
     model.train()
+    # for livelossplot
+    training_loss = 0.0
+    training_corrects = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -21,27 +26,38 @@ def train(args, model, device, train_loader, optimizer, epoch):
         loss = F.nll_loss(output, target)
         loss.backward()
         optimizer.step()
+        # for livelossplot
+        _, preds = torch.max(output, 1)
+        training_loss += loss.detach() * data.size(0)
+        training_corrects += torch.sum(preds == target.data)
         if batch_idx % args.log_interval == 0:
-            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
+            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100. * batch_idx / len(train_loader):.4f}%)]\tLoss: {loss.item():.6f}')
             if args.dry_run:
                 break
+    epoch_loss = training_loss / len(train_loader.dataset)
+    epoch_acc = training_corrects.float() / len(train_loader.dataset)
+    logs['log loss'] = epoch_loss.item()
+    logs['accuracy'] = epoch_acc.item()
 
 
-def test(model, device, test_loader):
+def test(model, device, test_loader, logs):
     model.eval()
-    test_loss = 0
-    correct = 0
+    test_loss = 0.0
+    test_corrects = 0
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
+            loss = F.nll_loss(output, target)
+            test_loss += loss.detach() * data.size(0)
+            _, preds = torch.max(output, 1)
+            test_corrects += torch.sum(preds == target.data)
 
-    test_loss /= len(test_loader.dataset)
-
-    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%)\n')
+    epoch_loss = test_loss / len(test_loader.dataset)
+    epoch_acc = test_corrects.float() / len(test_loader.dataset)
+    logs['val_log loss'] = epoch_loss.item()
+    logs['val_accuracy'] = epoch_acc.item()
+    print(f'\nTest set: Average loss: {epoch_loss:.4f}, Accuracy: {test_corrects}/{len(test_loader.dataset)} ({100. * epoch_acc:.4f}%)\n')
 
 
 def main():
@@ -101,10 +117,16 @@ def main():
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+
+    liveloss = PlotLosses()
+
     for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch)
-        test(model, device, test_loader)
+        logs = {}
+        train(args, model, device, train_loader, optimizer, epoch, logs)
+        test(model, device, test_loader, logs)
         scheduler.step()
+        liveloss.update(logs)
+        liveloss.send()
 
     if args.save_model:
         torch.save(model.state_dict(), "mnist_cnn.pt")
