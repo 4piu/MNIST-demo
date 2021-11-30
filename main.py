@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 
 def train(args, model, device, train_loader, func_loss, optimizer, epoch, logs):
     model.train()
-    # for livelossplot
     training_loss = 0.0
     training_corrects = 0
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -26,7 +25,6 @@ def train(args, model, device, train_loader, func_loss, optimizer, epoch, logs):
         loss = func_loss(output, target)
         loss.backward()
         optimizer.step()
-        # for livelossplot
         _, preds = torch.max(output, 1)
         training_loss += loss.detach() * data.size(0)
         training_corrects += torch.sum(preds == target.data)
