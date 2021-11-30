@@ -13,16 +13,17 @@ class ExampleNet(nn.Module):
         self.fc2 = nn.Linear(128, 10)
 
     def forward(self, x):
-        x = self.conv1(x)
+        x = self.conv1(x)  # [1, 28, 28] -> [32, 26, 26]
         x = F.relu(x)
-        x = self.conv2(x)
+        x = self.conv2(x)  # [32, 26, 26] -> [64, 24, 24]
         x = F.relu(x)
-        x = F.max_pool2d(x, 2)
+        x = F.max_pool2d(x, 2)  # [64, 24, 24] -> [64, 12, 12]
         x = self.dropout1(x)
-        x = torch.flatten(x, 1)
-        x = self.fc1(x)
+        x = torch.flatten(x, 1)  # [64, 12, 12] -> [9216]
+        x = self.fc1(x)  # [9216] -> [128]
         x = F.relu(x)
         x = self.dropout2(x)
-        x = self.fc2(x)
+        x = self.fc2(x)  # [128] -> [10]
         output = F.log_softmax(x, dim=1)
         return output
+

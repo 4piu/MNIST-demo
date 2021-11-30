@@ -94,9 +94,9 @@ def show_prediction(model, device, test_loader, func_loss, positive, row=4, col=
             for r in range(row):
                 if len(result_rnd) > 0:
                     result = result_rnd.pop()
-                    axarr[r, c].imshow(result[0].cpu().numpy().squeeze(), cmap="gray_r")
-                    axarr[r, c].set_title(f'{result[1]}' if positive else f'{result[1]} ({result[2]})')
-                    axarr[r, c].axis('off')
+                    axarr[c, r].imshow(result[0].cpu().numpy().squeeze(), cmap="gray_r")
+                    axarr[c, r].set_title(f'{result[1]}' if positive else f'{result[1]} ({result[2]})')
+                axarr[c, r].axis('off')
         plt.tight_layout()
         plt.show()
 
